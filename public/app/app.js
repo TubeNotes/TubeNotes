@@ -3,6 +3,7 @@ angular.module('tubenotes', [
   'tubenotes.watch',
   'tubenotes.services',
   'tubenotes.auth', 
+  'tubenotes.home',
   'ngRoute'
 ])
 
@@ -26,18 +27,61 @@ angular.module('tubenotes', [
   var globalObj = {
     currentVideo: {},
     addNote: addNote,
-    username: ''
+    username: '',
+    searchResults: []
   };
 
   return globalObj;
 })
 
-.controller('appController', function($scope, $window, $location, AppFactory, Auth) {
-  $scope.currentVideo = "https://www.youtube.com/embed/4ZAEBxGipoA";
-  // Log the user out and reset the username to an empty street
+.controller('appController', function($scope, $http, $window, $location, AppFactory, Auth) {
+  $scope.currentVideo = 'https://www.youtube.com/embed/4ZAEBxGipoA';
+  // Log the user out and reset the username 
   $scope.logout = function () {
-    Auth.logout();
+    Auth.signout();
     window.username = '';
+  };
+
+  // This is to set the current video from the YouTube search and the library
+  // 'video' comes from the youtube search and 'libVideo' comes from the users library of saved videos
+  $scope.setCurrentVideo = function (video, libVideo) {
+    if (video) {
+      AppFactory.currentVideo = {
+        title: video.snippet.title,
+        id: video.id.videoId,
+        comments: []
+      };
+    } else if (libVideo) {
+      AppFactory.currentVideo = {
+        title: libVideo.title,
+        id: libVideo.url.slice(18),
+        comments: libVideo.comments
+      };
+    }
+    // Redirect the page to the watch route
+    $location.path('/watch');
+    // make asynchronous call to onYouTubeIframeAPIReady
+    setTimeout(window.onYouTubeIframeAPIReady, 0);
+  };
+
+  $scope.searchYoutube = function(msg) {
+    $http.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        key: window.YOUTUBE_API_KEY,
+        type: 'video',
+        maxResults: '10',
+        part: 'id,snippet',
+        q: msg
+      }
+    })
+    .success(function(data) {
+      // $scope.videos = data.items;
+      AppFactory.searchResults = data.items;
+      $location.path('/search');
+    })
+    .error(function() {
+      console.log('ERROR');
+    });
   };
 })
 // Routing for app
@@ -46,6 +90,11 @@ angular.module('tubenotes', [
     .when('/', {
       templateUrl: 'app/auth/login.html',
       controller: '',
+    })
+    .when('/home', {
+      templateUrl: 'app/home/home.html',
+      controller: 'HomeController',
+      authenticate: true
     })
     .when('/watch', {
       templateUrl: 'app/watch/watch.html',
