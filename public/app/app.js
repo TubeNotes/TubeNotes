@@ -3,18 +3,22 @@ angular.module('tubenotes', [
   'tubenotes.watch',
   'tubenotes.services',
   'tubenotes.auth', 
-  'ngRoute'
+  'tubenotes.home',
+  'ngRoute',
+  'tubenotes.groups',
+  'angularMoment',
+  'tubenotes.groupVids'
 ])
 
 .factory('AppFactory', function($http) {
   
   // This factory function will do a post request to our server to store a note in our database
-  var addNote = function(commentTitle, commentText, timestamp) {
+  var addNote = function(commentText, timestamp) {
     note = {
-      username: window.username,
+      username: globalObj.username,
       videoUrl: 'youtube.com/embed/' + globalObj.currentVideo.id,
       videoTitle: globalObj.currentVideo.title,
-      commentTitle: commentTitle,
+      image: globalObj.currentVideo.image,
       commentText: commentText,
       timestamp: timestamp
     };
@@ -26,18 +30,75 @@ angular.module('tubenotes', [
   var globalObj = {
     currentVideo: {},
     addNote: addNote,
-    username: ''
+    username: '',
+    searchResults: []
   };
 
   return globalObj;
 })
 
-.controller('appController', function($scope, $window, $location, AppFactory, Auth) {
-  $scope.currentVideo = "https://www.youtube.com/embed/4ZAEBxGipoA";
-  // Log the user out and reset the username to an empty street
+.controller('appController', function($scope, $http, $window, $location, AppFactory, Auth, GroupHandler) {
+  $scope.currentVideo = 'https://www.youtube.com/embed/4ZAEBxGipoA';
+  $scope.isLoggedIn = function() {
+    return AppFactory.username !== '';
+  };
+
+  // Log the user out and reset the username 
   $scope.logout = function () {
-    Auth.logout();
-    window.username = '';
+    Auth.signout();
+    AppFactory.username = '';
+  };
+
+  // This is to set the current video from the YouTube search and the library
+  // 'video' comes from the youtube search and 'libVideo' comes from the users library of saved videos
+  $scope.setCurrentVideo = function (video, libVideo, groupBool) {
+    if (video) {
+      AppFactory.currentVideo = {
+        title: video.snippet.title,
+        id: video.id.videoId,
+        comments: [], 
+        image: video.snippet.thumbnails.default.url
+      };
+    } else if (libVideo) {
+      if (!libVideo.comments) {
+        libVideo.comments = [];
+      }
+      AppFactory.currentVideo = {
+        title: libVideo.title,
+        id: libVideo.url.slice(18),
+        comments: libVideo.comments,
+        image: libVideo.image,
+        videoTableId: libVideo.id
+      };
+    }
+
+    if (groupBool) {
+      $location.path('/watch').search({group: GroupHandler.currentGroup.groupname});
+    }
+    // Redirect the page to the watch route
+    $location.path('/watch');
+    // make asynchronous call to onYouTubeIframeAPIReady
+    setTimeout(window.onYouTubeIframeAPIReady, 0);
+  };
+
+  $scope.searchYoutube = function(msg) {
+    $http.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        key: window.YOUTUBE_API_KEY,
+        type: 'video',
+        maxResults: '10',
+        part: 'id,snippet',
+        q: msg
+      }
+    })
+    .success(function(data) {
+      // $scope.videos = data.items;
+      AppFactory.searchResults = data.items;
+      $location.path('/search');
+    })
+    .error(function() {
+      console.log('ERROR');
+    });
   };
 })
 // Routing for app
@@ -45,7 +106,22 @@ angular.module('tubenotes', [
   $routeProvider
     .when('/', {
       templateUrl: 'app/auth/login.html',
-      controller: '',
+      controller: 'AuthController',
+    })
+    .when('/home', {
+      templateUrl: 'app/home/home.html',
+      controller: 'HomeController',
+      authenticate: true
+    })
+    .when('/groups', {
+      templateUrl: 'app/groups/groups.html',
+      controller: 'GroupController',
+      authenticate: true
+    })
+    .when('/groupVids', {
+      templateUrl: 'app/groups/groupVids.html',
+      controller: 'GroupVidsController',
+      authenticate: true
     })
     .when('/watch', {
       templateUrl: 'app/watch/watch.html',
